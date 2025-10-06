@@ -108,13 +108,14 @@ pub fn generate_callback_interface(
             static final _handleMap = UniffiHandleMap<$cls_name>();
             static bool _vtableInitialized = false;
 
-            static $cls_name lift(int handle) {
-                return _handleMap.get(handle);
+            static $cls_name lift(Pointer<Void> handle) {
+                return _handleMap.get(handle.address);
             }
 
-            static int lower($cls_name value) {
+            static Pointer<Void> lower($cls_name value) {
                 _ensureVTableInitialized();
-                return _handleMap.insert(value);
+                final handle = _handleMap.insert(value);
+                return Pointer<Void>.fromAddress(handle);
             }
 
             static void _ensureVTableInitialized() {
@@ -126,12 +127,13 @@ pub fn generate_callback_interface(
 
             static LiftRetVal<$cls_name> read(Uint8List buf) {
                 final handle = buf.buffer.asByteData(buf.offsetInBytes).getInt64(0);
-                return LiftRetVal(lift(handle), 8);
+                final pointer = Pointer<Void>.fromAddress(handle);
+                return LiftRetVal(lift(pointer), 8);
             }
 
             static int write($cls_name value, Uint8List buf) {
                 final handle = lower(value);
-                buf.buffer.asByteData(buf.offsetInBytes).setInt64(0, handle);
+                buf.buffer.asByteData(buf.offsetInBytes).setInt64(0, handle.address);
                 return 8;
             }
 

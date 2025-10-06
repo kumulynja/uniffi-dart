@@ -425,13 +425,6 @@ impl DartCodeOracle {
                     outReturn.value = result ? 1 : 0;
                 )
             }
-            Type::Object { .. } => {
-                let lowered = ret_type.as_codetype().ffi_converter_name();
-                quote!(
-                    final result = obj.$method_name($(for arg in &args => $arg,));
-                    outReturn.value = $lowered.lower(result);
-                )
-            }
             Type::Optional { inner_type } => {
                 // For optional return values
                 if let Type::String = **inner_type {
@@ -466,6 +459,13 @@ impl DartCodeOracle {
                     final result = obj.$method_name($(for arg in &args => $arg,));
                     outReturn.ref = FfiConverterString.lower(result);
                     status.code = CALL_SUCCESS;
+                )
+            }
+            Type::Object { .. } => {
+                let lowered = ret_type.as_codetype().ffi_converter_name();
+                quote!(
+                    final result = obj.$method_name($(for arg in &args => $arg,));
+                    outReturn.value = $lowered.lower(result);
                 )
             }
             Type::Sequence { inner_type } => {
@@ -568,9 +568,7 @@ impl DartCodeOracle {
             Type::Object {
                 imp: ObjectImpl::CallbackTrait,
                 ..
-            } => {
-                quote!(Pointer<Void>.fromAddress($(base_lower)))
-            }
+            } => base_lower,
             _ => base_lower,
         }
     }
