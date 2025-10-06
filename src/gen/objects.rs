@@ -74,6 +74,23 @@ pub fn generate_object(obj: &Object, type_helper: &dyn TypeHelperRenderer) -> da
         );
         let vtable_interface = generate_callback_vtable_interface(obj.name(), &obj.methods());
         let functions = generate_callback_functions(obj.name(), &obj.methods(), type_helper);
+        let ffi_module = type_helper
+            .get_ci()
+            .iter_ffi_function_definitions()
+            .next()
+            .and_then(|f| {
+                let name = f.name();
+                name.strip_prefix("uniffi_")
+                    .and_then(|rest| rest.split("_fn_").next())
+                    .map(|s| s.replace('-', "_"))
+            })
+            .unwrap_or_else(|| {
+                type_helper
+                    .get_ci()
+                    .namespace_for_type(&obj.as_type())
+                    .expect("object should have namespace")
+                    .replace('-', "_")
+            });
         let vtable_init = generate_callback_interface_vtable_init_function(
             obj.name(),
             &obj.methods(),
@@ -81,6 +98,7 @@ pub fn generate_object(obj: &Object, type_helper: &dyn TypeHelperRenderer) -> da
                 .get_ci()
                 .namespace_for_type(&obj.as_type())
                 .expect("object should have namespace"),
+            &ffi_module,
         );
         return quote!(
             $interface

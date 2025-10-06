@@ -58,10 +58,22 @@ impl Renderable for CallbackInterfaceCodeType {
             .get_ci()
             .namespace_for_type(&callback.as_type())
             .unwrap_or_else(|_| type_helper.get_ci().namespace());
+        let ffi_module = type_helper
+            .get_ci()
+            .iter_ffi_function_definitions()
+            .next()
+            .and_then(|f| {
+                let name = f.name();
+                name.strip_prefix("uniffi_")
+                    .and_then(|rest| rest.split("_fn_").next())
+                    .map(|s| s.replace('-', "_"))
+            })
+            .unwrap_or_else(|| namespace.replace('-', "_"));
         let vtable_init = generate_callback_interface_vtable_init_function(
             callback.name(),
             &callback.methods(),
             namespace,
+            &ffi_module,
         );
 
         quote! {
@@ -302,12 +314,14 @@ pub fn generate_callback_functions(
 pub fn generate_callback_interface_vtable_init_function(
     callback_name: &str,
     methods: &[&Method],
-    namespace: &str,
+    _namespace: &str,
+    ffi_module: &str,
 ) -> dart::Tokens {
     let vtable_name = &format!("UniffiVTableCallbackInterface{callback_name}");
     let vtable_static_instance_name =
         format!("{}{}", DartCodeOracle::fn_name(callback_name), "VTable");
     let init_fn_name = &format!("init{callback_name}VTable");
+    let snake_callback = callback_name.to_lowercase();
 
     quote! {
         late final Pointer<$vtable_name> $(&vtable_static_instance_name);
@@ -325,7 +339,7 @@ pub fn generate_callback_interface_vtable_init_function(
             $(&vtable_static_instance_name).ref.uniffiFree = $(format!("{}FreePointer", DartCodeOracle::fn_name(callback_name)));
 
             rustCall((status) {
-                _UniffiLib.instance.uniffi_$(namespace)_fn_init_callback_vtable_$(callback_name.to_lowercase())(
+                _UniffiLib.instance.uniffi_$(ffi_module)_fn_init_callback_vtable_$(snake_callback)(
                     $(vtable_static_instance_name),
                 );
                 checkCallStatus(NullRustCallStatusErrorHandler(), status);
