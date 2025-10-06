@@ -24,7 +24,7 @@ impl CodeType for EnumCodeType {
     }
 
     fn canonical_name(&self) -> String {
-        self.id.to_string()
+        DartCodeOracle::class_name(&self.id)
     }
 
     fn literal(&self, literal: &Literal) -> String {
@@ -46,7 +46,8 @@ impl CodeType for EnumCodeType {
 
 impl Renderable for EnumCodeType {
     fn render_type_helper(&self, type_helper: &dyn TypeHelperRenderer) -> dart::Tokens {
-        if type_helper.check(&self.id) {
+        let canonical = self.canonical_name();
+        if type_helper.check(&canonical) {
             quote!()
         } else if let Some(enum_) = type_helper.get_enum(&self.id) {
             generate_enum(enum_, type_helper)

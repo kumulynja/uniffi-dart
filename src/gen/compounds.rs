@@ -5,7 +5,7 @@ use paste::paste;
 use uniffi_bindgen::interface::Type;
 
 use super::oracle::{AsCodeType, DartCodeOracle};
-use crate::gen::render::{Renderable, TypeHelperRenderer};
+use crate::gen::render::{AsRenderable, Renderable, TypeHelperRenderer};
 
 macro_rules! impl_code_type_for_compound {
      ($T:ty, $type_label_pattern:literal, $canonical_name_pattern: literal) => {
@@ -47,9 +47,16 @@ macro_rules! impl_renderable_for_compound {
                     let inner_codetype = DartCodeOracle::find(self.inner());
                     let inner_type_label = inner_codetype.type_label().replace("Error", "Exception");
 
-                    type_helper.include_once_check(&inner_codetype.canonical_name(), &self.inner()); // Add the Inner FFI Converter
+                    if !type_helper.include_once_check(&inner_codetype.canonical_name(), &self.inner()) {
+                        let renamed = inner_codetype
+                            .canonical_name()
+                            .replace("Error", "Exception");
+                        type_helper.include_once_check(&renamed, &self.inner());
+                    }
 
-                    let inner_canonical_name = inner_codetype.canonical_name().replace("Error", "Exception");
+                    let inner_canonical_name = inner_codetype
+                        .canonical_name()
+                        .replace("Error", "Exception");
                     let cl_name_buf = format!($canonical_name_pattern, &inner_canonical_name);
                     let cl_name = &cl_name_buf;
                     let type_label_buf = format!($type_label_pattern, &inner_type_label);
@@ -65,6 +72,12 @@ macro_rules! impl_renderable_for_compound {
                     let inner_data_type = &inner_data_type_buf;
                     let _inner_type_signature = if inner_data_type.contains("Float") { "double" } else { "int" };
 
+
+                    let inner_helper = if matches!(self.inner(), Type::Sequence { .. }) {
+                        self.inner().as_renderable().render_type_helper(type_helper)
+                    } else {
+                        quote!()
+                    };
 
                     quote! {
                         class $cl_name {
@@ -118,6 +131,7 @@ macro_rules! impl_renderable_for_compound {
                                 return $inner_cl_converter_name.write(value, Uint8List.view(buf.buffer, buf.offsetInBytes + 1)) + 1;
                             }
                         }
+                        $inner_helper
                     }
                 }
             }
