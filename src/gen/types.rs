@@ -415,29 +415,55 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
             }
 
             class UniffiHandleMap<T> {
-                final Map<int, T> _map = {};
+                final Map<int, WeakReference<T>> _map = {};
+                final Map<int, T> _strongRefs = {}; // Keep strong refs to prevent premature GC
                 int _counter = 0;
+                
+                // Finalizer to automatically clean up handles when objects are GC'd
+                late final Finalizer<int> _finalizer = Finalizer<int>((handle) {
+                    _map.remove(handle);
+                    _strongRefs.remove(handle);
+                });
 
                 int insert(T obj) {
-                final handle = _counter++;
-                _map[handle] = obj;
-                return handle;
+                    final handle = _counter++;
+                    _map[handle] = WeakReference(obj);
+                    _strongRefs[handle] = obj; 
+                    
+                    _finalizer.attach(obj, handle, detach: obj);
+                    return handle;
                 }
 
                 T get(int handle) {
-                final obj = _map[handle];
-                if (obj == null) {
-                    throw UniffiInternalError(
-                        UniffiInternalError.unexpectedStaleHandle, "Handle not found");
-                }
-                return obj;
+                    final weakRef = _map[handle];
+                    if (weakRef == null) {
+                        throw UniffiInternalError(
+                            UniffiInternalError.unexpectedStaleHandle, "Handle not found");
+                    }
+                    
+                    final obj = weakRef.target;
+                    if (obj == null) {
+                        _map.remove(handle);
+                        _strongRefs.remove(handle);
+                        throw UniffiInternalError(
+                            UniffiInternalError.unexpectedStaleHandle, "Handle not found (object was garbage collected)");
+                    }
+                    return obj;
                 }
 
                 void remove(int handle) {
-                if (_map.remove(handle) == null) {
-                    throw UniffiInternalError(
-                        UniffiInternalError.unexpectedStaleHandle, "Handle not found");
-                }
+                    final weakRef = _map.remove(handle);
+                    final strongRef = _strongRefs.remove(handle);
+                    
+                    if (weakRef == null && strongRef == null) {
+                        throw UniffiInternalError(
+                            UniffiInternalError.unexpectedStaleHandle, "Handle not found");
+                    }
+                    
+                    final obj = strongRef ?? weakRef?.target;
+                    if (obj != null) {
+                        _finalizer.detach(obj);
+                    }
                 }
             }
 
