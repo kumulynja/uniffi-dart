@@ -211,14 +211,41 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 }
             }
 
+            class _RustCallStatusPool {
+                static const int _maxPoolSize = 8; 
+                static final List<Pointer<RustCallStatus>> _pool = [];
+                
+                static Pointer<RustCallStatus> acquire() {
+                    if (_pool.isNotEmpty) {
+                        final status = _pool.removeLast();
+                        
+                        status.ref.code = 0;
+                        status.ref.errorBuf.capacity = 0;
+                        status.ref.errorBuf.len = 0;
+                        status.ref.errorBuf.data = Pointer.fromAddress(0);
+                        return status;
+                    }
+                    
+                    return calloc<RustCallStatus>();
+                }
+                
+                static void release(Pointer<RustCallStatus> status) {
+                    if (_pool.length < _maxPoolSize) {
+                        _pool.add(status);
+                    } else {
+                        calloc.free(status);
+                    }
+                }
+            }
+
             T rustCall<T>(T Function(Pointer<RustCallStatus>) callback, [UniffiRustCallStatusErrorHandler? errorHandler]) {
-                final status = calloc<RustCallStatus>();
+                final status = _RustCallStatusPool.acquire();
                 try {
                     final result = callback(status);
                     checkCallStatus(errorHandler ?? NullRustCallStatusErrorHandler(), status);
                     return result;
                 } finally {
-                calloc.free(status);
+                    _RustCallStatusPool.release(status);
                 }
             }
 
