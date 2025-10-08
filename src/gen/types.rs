@@ -279,9 +279,23 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
             RustBuffer toRustBuffer(Uint8List data) {
                 final length = data.length;
 
-                final Pointer<Uint8> frameData = calloc<Uint8>(length); // Allocate a pointer large enough.
-                final pointerList = frameData.asTypedList(length); // Create a list that uses our pointer and copy in the data.
-                pointerList.setAll(0, data); // FIXME: can we remove this memcopy somehow?
+                final Pointer<Uint8> frameData = calloc<Uint8>(length);
+                
+                if (length > 0) {
+                    final pointerList = frameData.asTypedList(length);
+                    if (length >= 64) {
+                        var offset = 0;
+                        const chunkSize = 1024; 
+                        while (offset < length) {
+                            final end = (offset + chunkSize < length) ? offset + chunkSize : length;
+                            final chunk = data.sublist(offset, end);
+                            pointerList.setRange(offset, end, chunk);
+                            offset = end;
+                        }
+                    } else {
+                        pointerList.setAll(0, data);
+                    }
+                }
 
                 final bytes = calloc<ForeignBytes>();
                 bytes.ref.len = length;
