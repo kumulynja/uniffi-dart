@@ -212,23 +212,23 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
             }
 
             class _RustCallStatusPool {
-                static const int _maxPoolSize = 8; 
+                static const int _maxPoolSize = 8;
                 static final List<Pointer<RustCallStatus>> _pool = [];
-                
+
                 static Pointer<RustCallStatus> acquire() {
                     if (_pool.isNotEmpty) {
                         final status = _pool.removeLast();
-                        
+
                         status.ref.code = 0;
                         status.ref.errorBuf.capacity = 0;
                         status.ref.errorBuf.len = 0;
                         status.ref.errorBuf.data = Pointer.fromAddress(0);
                         return status;
                     }
-                    
+
                     return calloc<RustCallStatus>();
                 }
-                
+
                 static void release(Pointer<RustCallStatus> status) {
                     if (_pool.length < _maxPoolSize) {
                         _pool.add(status);
@@ -262,17 +262,6 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 Exception lift(RustBuffer errorBuf);
             }
 
-            // Finalizer for automatic RustBuffer cleanup
-            final _rustBufferFinalizer = Finalizer<RustBuffer>((buffer) {
-                if (buffer.data.address != 0 && buffer.len > 0) {
-                    try {
-                        rustCall((status) => $(DartCodeOracle::find_lib_instance()).$(self.ci.ffi_rustbuffer_free().name())(buffer, status));
-                    } catch (e) {
-                        
-                    }
-                }
-            });
-
             final class RustBuffer extends Struct {
                 @Uint64()
                 external int capacity;
@@ -283,15 +272,11 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 external Pointer<Uint8> data;
 
                 static RustBuffer alloc(int size) {
-                    final buffer = rustCall((status) => $(DartCodeOracle::find_lib_instance()).$(self.ci.ffi_rustbuffer_alloc().name())(size, status));
-                    _rustBufferFinalizer.attach(buffer, buffer, detach: buffer);
-                    return buffer;
+                    return rustCall((status) => $(DartCodeOracle::find_lib_instance()).$(self.ci.ffi_rustbuffer_alloc().name())(size, status));
                 }
 
                 static RustBuffer fromBytes(ForeignBytes bytes) {
-                    final buffer = rustCall((status) => $(DartCodeOracle::find_lib_instance()).$(self.ci.ffi_rustbuffer_from_bytes().name())(bytes, status));
-                    _rustBufferFinalizer.attach(buffer, buffer, detach: buffer);
-                    return buffer;
+                    return rustCall((status) => $(DartCodeOracle::find_lib_instance()).$(self.ci.ffi_rustbuffer_from_bytes().name())(bytes, status));
                 }
 
                 // static RustBuffer from(Pointer<Uint8> bytes, int len) {
@@ -300,7 +285,6 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 // }
 
                 void free() {
-                    _rustBufferFinalizer.detach(this);
                     rustCall((status) => $(DartCodeOracle::find_lib_instance()).$(self.ci.ffi_rustbuffer_free().name())(this, status));
                 }
 
@@ -329,35 +313,35 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 static int _handleMapRemoves = 0;
                 static int _stringCacheHits = 0;
                 static int _stringCacheMisses = 0;
-                
+
                 static void enable() => _enabled = true;
                 static void disable() => _enabled = false;
                 static bool get isEnabled => _enabled;
-                
+
                 static void incrementRustCalls() {
                     if (_enabled) _rustCallCount++;
                 }
-                
+
                 static void incrementBufferAllocations() {
                     if (_enabled) _bufferAllocations++;
                 }
-                
+
                 static void incrementHandleMapInserts() {
                     if (_enabled) _handleMapInserts++;
                 }
-                
+
                 static void incrementHandleMapRemoves() {
                     if (_enabled) _handleMapRemoves++;
                 }
-                
+
                 static void incrementStringCacheHits() {
                     if (_enabled) _stringCacheHits++;
                 }
-                
+
                 static void incrementStringCacheMisses() {
                     if (_enabled) _stringCacheMisses++;
                 }
-                
+
                 static Map<String, dynamic> getStats() {
                     return {
                         "enabled": _enabled,
@@ -372,7 +356,7 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                             : 0.0,
                     };
                 }
-                
+
                 static void reset() {
                     _rustCallCount = 0;
                     _bufferAllocations = 0;
@@ -387,12 +371,12 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 final length = data.length;
 
                 final Pointer<Uint8> frameData = calloc<Uint8>(length);
-                
+
                 if (length > 0) {
                     final pointerList = frameData.asTypedList(length);
                     if (length >= 1024) {
                         var offset = 0;
-                        const chunkSize = 4096; 
+                        const chunkSize = 4096;
                         while (offset < length) {
                             final end = (offset + chunkSize < length) ? offset + chunkSize : length;
                             final chunk = data.sublist(offset, end);
@@ -531,11 +515,11 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 }
             }
 
-            class UniffiHandleMap<T> {
+            class UniffiHandleMap<T extends Object> {
                 final Map<int, WeakReference<T>> _map = {};
                 final Map<int, T> _strongRefs = {}; // Keep strong refs to prevent premature GC
                 int _counter = 0;
-                
+
                 // Finalizer to automatically clean up handles when objects are GC'd
                 late final Finalizer<int> _finalizer = Finalizer<int>((handle) {
                     _map.remove(handle);
@@ -545,9 +529,9 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 int insert(T obj) {
                     final handle = _counter++;
                     _map[handle] = WeakReference(obj);
-                    _strongRefs[handle] = obj; 
-                    
-                    _finalizer.attach(obj, handle, detach: obj);
+                    _strongRefs[handle] = obj;
+
+                    _finalizer.attach(obj, handle);
                     UniffiMemoryProfiler.incrementHandleMapInserts();
                     return handle;
                 }
@@ -558,7 +542,7 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                         throw UniffiInternalError(
                             UniffiInternalError.unexpectedStaleHandle, "Handle not found");
                     }
-                    
+
                     final obj = weakRef.target;
                     if (obj == null) {
                         _map.remove(handle);
@@ -572,12 +556,12 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 void remove(int handle) {
                     final weakRef = _map.remove(handle);
                     final strongRef = _strongRefs.remove(handle);
-                    
+
                     if (weakRef == null && strongRef == null) {
                         throw UniffiInternalError(
                             UniffiInternalError.unexpectedStaleHandle, "Handle not found");
                     }
-                    
+
                     final obj = strongRef ?? weakRef?.target;
                     if (obj != null) {
                         _finalizer.detach(obj);

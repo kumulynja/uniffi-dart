@@ -19,31 +19,31 @@ impl Renderable for StringCodeType {
         quote! {
             class FfiConverterString {
                 static final Map<String, Uint8List> _utf8Cache = {};
-                static final List<String> _cacheKeys = [];  
-                static const int _maxCacheSize = 128; 
-                
+                static final List<String> _cacheKeys = [];
+                static const int _maxCacheSize = 128;
+
                 static final Uint8List _emptyUtf8 = Uint8List(0);
-                
+
                 static Uint8List _getCachedUtf8(String value) {
                     if (value.isEmpty) return _emptyUtf8;
                     if (value.length > 256) {
                         UniffiMemoryProfiler.incrementStringCacheMisses();
                         return utf8.encoder.convert(value);
                     }
-                    
+
                     if (_utf8Cache.containsKey(value)) {
                         UniffiMemoryProfiler.incrementStringCacheHits();
                         return _utf8Cache[value]!;
                     }
-                    
+
                     UniffiMemoryProfiler.incrementStringCacheMisses();
                     final encoded = utf8.encoder.convert(value);
-                    
+
                     if (_utf8Cache.length >= _maxCacheSize) {
                         final oldestKey = _cacheKeys.removeAt(0);
                         _utf8Cache.remove(oldestKey);
                     }
-                    
+
                     _utf8Cache[value] = encoded;
                     _cacheKeys.add(value);
                     return encoded;
