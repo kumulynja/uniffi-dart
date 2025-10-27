@@ -211,14 +211,42 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 }
             }
 
+            class _RustCallStatusPool {
+                static const int _maxPoolSize = 8;
+                static final List<Pointer<RustCallStatus>> _pool = [];
+
+                static Pointer<RustCallStatus> acquire() {
+                    if (_pool.isNotEmpty) {
+                        final status = _pool.removeLast();
+
+                        status.ref.code = 0;
+                        status.ref.errorBuf.capacity = 0;
+                        status.ref.errorBuf.len = 0;
+                        status.ref.errorBuf.data = Pointer.fromAddress(0);
+                        return status;
+                    }
+
+                    return calloc<RustCallStatus>();
+                }
+
+                static void release(Pointer<RustCallStatus> status) {
+                    if (_pool.length < _maxPoolSize) {
+                        _pool.add(status);
+                    } else {
+                        calloc.free(status);
+                    }
+                }
+            }
+
             T rustCall<T>(T Function(Pointer<RustCallStatus>) callback, [UniffiRustCallStatusErrorHandler? errorHandler]) {
-                final status = calloc<RustCallStatus>();
+                UniffiMemoryProfiler.incrementRustCalls();
+                final status = _RustCallStatusPool.acquire();
                 try {
                     final result = callback(status);
                     checkCallStatus(errorHandler ?? NullRustCallStatusErrorHandler(), status);
                     return result;
                 } finally {
-                calloc.free(status);
+                    _RustCallStatusPool.release(status);
                 }
             }
 
@@ -276,17 +304,98 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 }
             }
 
+            // Memory profiling and monitoring utilities
+            class UniffiMemoryProfiler {
+                static bool _enabled = false;
+                static int _rustCallCount = 0;
+                static int _bufferAllocations = 0;
+                static int _handleMapInserts = 0;
+                static int _handleMapRemoves = 0;
+                static int _stringCacheHits = 0;
+                static int _stringCacheMisses = 0;
+
+                static void enable() => _enabled = true;
+                static void disable() => _enabled = false;
+                static bool get isEnabled => _enabled;
+
+                static void incrementRustCalls() {
+                    if (_enabled) _rustCallCount++;
+                }
+
+                static void incrementBufferAllocations() {
+                    if (_enabled) _bufferAllocations++;
+                }
+
+                static void incrementHandleMapInserts() {
+                    if (_enabled) _handleMapInserts++;
+                }
+
+                static void incrementHandleMapRemoves() {
+                    if (_enabled) _handleMapRemoves++;
+                }
+
+                static void incrementStringCacheHits() {
+                    if (_enabled) _stringCacheHits++;
+                }
+
+                static void incrementStringCacheMisses() {
+                    if (_enabled) _stringCacheMisses++;
+                }
+
+                static Map<String, dynamic> getStats() {
+                    return {
+                        "enabled": _enabled,
+                        "rust_calls": _rustCallCount,
+                        "buffer_allocations": _bufferAllocations,
+                        "handle_map_inserts": _handleMapInserts,
+                        "handle_map_removes": _handleMapRemoves,
+                        "string_cache_hits": _stringCacheHits,
+                        "string_cache_misses": _stringCacheMisses,
+                        "string_cache_hit_rate": _stringCacheHits + _stringCacheMisses > 0
+                            ? _stringCacheHits / (_stringCacheHits + _stringCacheMisses)
+                            : 0.0,
+                    };
+                }
+
+                static void reset() {
+                    _rustCallCount = 0;
+                    _bufferAllocations = 0;
+                    _handleMapInserts = 0;
+                    _handleMapRemoves = 0;
+                    _stringCacheHits = 0;
+                    _stringCacheMisses = 0;
+                }
+            }
+
             RustBuffer toRustBuffer(Uint8List data) {
                 final length = data.length;
 
-                final Pointer<Uint8> frameData = calloc<Uint8>(length); // Allocate a pointer large enough.
-                final pointerList = frameData.asTypedList(length); // Create a list that uses our pointer and copy in the data.
-                pointerList.setAll(0, data); // FIXME: can we remove this memcopy somehow?
+                final Pointer<Uint8> frameData = calloc<Uint8>(length);
+
+                if (length > 0) {
+                    final pointerList = frameData.asTypedList(length);
+                    if (length >= 1024) {
+                        var offset = 0;
+                        const chunkSize = 4096;
+                        while (offset < length) {
+                            final end = (offset + chunkSize < length) ? offset + chunkSize : length;
+                            final chunk = data.sublist(offset, end);
+                            pointerList.setRange(offset, end, chunk);
+                            offset = end;
+                        }
+                    } else {
+                        pointerList.setAll(0, data);
+                    }
+                }
 
                 final bytes = calloc<ForeignBytes>();
                 bytes.ref.len = length;
                 bytes.ref.data = frameData;
-                return RustBuffer.fromBytes(bytes.ref);
+                try {
+                    return RustBuffer.fromBytes(bytes.ref);
+                } finally {
+                    calloc.free(bytes);
+                }
             }
 
             final class ForeignBytes extends Struct {
@@ -302,10 +411,6 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 //   dataList.setAll(0, typedData);
                 //   return ForeignBytes(len: typedData.length, data: data);
                 // }
-
-                void free() {
-                calloc.free(data);
-                }
             }
 
             class LiftRetVal<T> {
@@ -410,30 +515,58 @@ impl Renderer<(FunctionDefinition, dart::Tokens)> for TypeHelpersRenderer<'_> {
                 }
             }
 
-            class UniffiHandleMap<T> {
-                final Map<int, T> _map = {};
+            class UniffiHandleMap<T extends Object> {
+                final Map<int, WeakReference<T>> _map = {};
+                final Map<int, T> _strongRefs = {}; // Keep strong refs to prevent premature GC
                 int _counter = 0;
 
+                // Finalizer to automatically clean up handles when objects are GC'd
+                late final Finalizer<int> _finalizer = Finalizer<int>((handle) {
+                    _map.remove(handle);
+                    _strongRefs.remove(handle);
+                });
+
                 int insert(T obj) {
-                final handle = _counter++;
-                _map[handle] = obj;
-                return handle;
+                    final handle = _counter++;
+                    _map[handle] = WeakReference(obj);
+                    _strongRefs[handle] = obj;
+
+                    _finalizer.attach(obj, handle);
+                    UniffiMemoryProfiler.incrementHandleMapInserts();
+                    return handle;
                 }
 
                 T get(int handle) {
-                final obj = _map[handle];
-                if (obj == null) {
-                    throw UniffiInternalError(
-                        UniffiInternalError.unexpectedStaleHandle, "Handle not found");
-                }
-                return obj;
+                    final weakRef = _map[handle];
+                    if (weakRef == null) {
+                        throw UniffiInternalError(
+                            UniffiInternalError.unexpectedStaleHandle, "Handle not found");
+                    }
+
+                    final obj = weakRef.target;
+                    if (obj == null) {
+                        _map.remove(handle);
+                        _strongRefs.remove(handle);
+                        throw UniffiInternalError(
+                            UniffiInternalError.unexpectedStaleHandle, "Handle not found (object was garbage collected)");
+                    }
+                    return obj;
                 }
 
                 void remove(int handle) {
-                if (_map.remove(handle) == null) {
-                    throw UniffiInternalError(
-                        UniffiInternalError.unexpectedStaleHandle, "Handle not found");
-                }
+                    final weakRef = _map.remove(handle);
+                    final strongRef = _strongRefs.remove(handle);
+
+                    if (weakRef == null && strongRef == null) {
+                        throw UniffiInternalError(
+                            UniffiInternalError.unexpectedStaleHandle, "Handle not found");
+                    }
+
+                    final obj = strongRef ?? weakRef?.target;
+                    if (obj != null) {
+                        _finalizer.detach(obj);
+                    }
+                    UniffiMemoryProfiler.incrementHandleMapRemoves();
                 }
             }
 
