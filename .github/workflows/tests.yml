@@ -38,6 +38,43 @@ jobs:
         continue-on-error: ${{ matrix.rust == 'nightly' }}
         run: cargo nextest run --all
 
+  test-downstream:
+    name: Test Downstream Bindings
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          path: main
+
+      - name: Checkout rust-payjoin
+        uses: actions/checkout@v4
+        with:
+          repository: payjoin/rust-payjoin
+          path: rust-payjoin
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Use cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Patch uniffi-dart dependency
+        run: |
+          cat >> rust-payjoin/Cargo.toml << 'EOF'
+
+          [patch.'https://github.com/Uniffi-Dart/uniffi-dart.git']
+          uniffi-dart = { path = "../main" }
+          EOF
+
+      - name: Generate dart bindings and run tests
+        run: cd rust-payjoin/payjoin-ffi/dart && bash scripts/generate_bindings.sh && dart test
+
   lints:
     name: Lints
     runs-on: ubuntu-latest
