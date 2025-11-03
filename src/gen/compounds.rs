@@ -45,38 +45,42 @@ macro_rules! impl_renderable_for_compound {
                 fn render_type_helper(&self, type_helper: &dyn TypeHelperRenderer) -> dart::Tokens {
                     type_helper.include_once_check(&self.ffi_converter_name(), &self.self_type);
                     let inner_codetype = DartCodeOracle::find(self.inner());
-                    let inner_type_label = inner_codetype.type_label().replace("Error", "Exception");
 
                     let original_canonical = inner_codetype.canonical_name();
-                    let mut inner_included =
-                        type_helper.include_once_check(&original_canonical, &self.inner());
-                    if !inner_included {
-                        let renamed = original_canonical.replace("Error", "Exception");
-                        if renamed != original_canonical {
-                            inner_included = type_helper.include_once_check(&renamed, &self.inner());
-                        }
-                    }
+                    let canonical_with_exception =
+                        DartCodeOracle::exception_safe_name(&original_canonical);
+                    let inner_already_registered =
+                        type_helper.include_once_check(&original_canonical, &self.inner())
+                            || (canonical_with_exception != original_canonical
+                                && type_helper.include_once_check(
+                                    &canonical_with_exception,
+                                    &self.inner(),
+                                ));
 
-                    let inner_canonical_name = inner_codetype
-                        .canonical_name()
-                        .replace("Error", "Exception");
-                    let cl_name_buf = format!($canonical_name_pattern, &inner_canonical_name);
+                    let raw_type_label = inner_codetype.type_label();
+                    let inner_type_label =
+                        DartCodeOracle::exception_safe_name(&raw_type_label);
+
+                    let cl_name_buf =
+                        format!($canonical_name_pattern, canonical_with_exception.as_str());
                     let cl_name = &cl_name_buf;
-                    let type_label_buf = format!($type_label_pattern, &inner_type_label);
+                    let type_label_buf =
+                        format!($type_label_pattern, inner_type_label.as_str());
                     let type_label = &type_label_buf;
 
-                    let inner_cl_converter_name_buf = inner_codetype.ffi_converter_name().replace("Error", "Exception");
+                    let raw_converter_name = inner_codetype.ffi_converter_name();
+                    let inner_cl_converter_name_buf =
+                        DartCodeOracle::exception_safe_name(&raw_converter_name);
                     let inner_cl_converter_name = &inner_cl_converter_name_buf;
-                    let inner_data_type_buf = inner_codetype
-                        .canonical_name()
-                        .replace("Error", "Exception")
+                    let inner_data_type_buf = canonical_with_exception
+                        .as_str()
                         .replace("UInt", "Uint")
                         .replace("Double", "Float");
                     let inner_data_type = &inner_data_type_buf;
-                    let _inner_type_signature = if inner_data_type.contains("Float") { "double" } else { "int" };
+                    let _inner_type_signature =
+                        if inner_data_type.contains("Float") { "double" } else { "int" };
 
-
-                    let inner_helper = if matches!(self.inner(), Type::Sequence { .. }) && !inner_included {
+                    let inner_helper = if matches!(self.inner(), Type::Sequence { .. }) && !inner_already_registered {
                         self.inner().as_renderable().render_type_helper(type_helper)
                     } else {
                         quote!()
@@ -146,23 +150,36 @@ macro_rules! impl_renderable_for_compound {
             impl Renderable for SequenceCodeType {
                 fn render_type_helper(&self, type_helper: &dyn TypeHelperRenderer) -> dart::Tokens {
 
-                    type_helper.include_once_check(&self.ffi_converter_name(), &self.self_type);
+                    let converter_name = self.ffi_converter_name();
+                    if type_helper.include_once_check(&converter_name, &self.self_type) {
+                        return quote!();
+                    }
                     let inner_codetype = self.inner().as_codetype();
-                    let inner_type_label = inner_codetype.type_label().replace("Error", "Exception");
 
-                    type_helper.include_once_check(&inner_codetype.canonical_name(), &self.inner()); // Add the Inner FFI Converter
+                    let original_canonical = inner_codetype.canonical_name();
+                    let canonical_with_exception =
+                        DartCodeOracle::exception_safe_name(&original_canonical);
+                    type_helper.include_once_check(&original_canonical, &self.inner());
+                    if canonical_with_exception != original_canonical {
+                        type_helper.include_once_check(&canonical_with_exception, &self.inner());
+                    }
 
-                    let inner_canonical_name = inner_codetype.canonical_name().replace("Error", "Exception");
-                    let cl_name_buf = format!($canonical_name_pattern, &inner_canonical_name);
+                    let raw_type_label = inner_codetype.type_label();
+                    let inner_type_label =
+                        DartCodeOracle::exception_safe_name(&raw_type_label);
+
+                    let cl_name_buf =
+                        format!($canonical_name_pattern, canonical_with_exception.as_str());
                     let cl_name = &cl_name_buf;
-                    let type_label_buf = format!("List<{}>", &inner_type_label);
+                    let type_label_buf = format!("List<{}>", inner_type_label.as_str());
                     let type_label = &type_label_buf;
 
-                    let inner_cl_converter_name_buf = inner_codetype.ffi_converter_name().replace("Error", "Exception");
+                    let raw_converter_name = inner_codetype.ffi_converter_name();
+                    let inner_cl_converter_name_buf =
+                        DartCodeOracle::exception_safe_name(&raw_converter_name);
                     let inner_cl_converter_name = &inner_cl_converter_name_buf;
-                    let inner_data_type = inner_codetype
-                        .canonical_name()
-                        .replace("Error", "Exception")
+                    let inner_data_type = canonical_with_exception
+                        .as_str()
                         .replace("UInt", "Uint")
                         .replace("Double", "Float");
                     let _inner_type_signature = if inner_data_type.contains("Float") { "double" } else { "int" };
