@@ -95,6 +95,24 @@ impl DartCodeOracle {
         quote!(_UniffiLib.instance)
     }
 
+    pub fn infer_ffi_module<F>(ci: &ComponentInterface, fallback: F) -> String
+    where
+        F: FnOnce() -> String,
+    {
+        ci.iter_ffi_function_definitions()
+            .next()
+            .and_then(|f| {
+                let name = f.name();
+                name.strip_prefix("uniffi_")
+                    .and_then(|rest| rest.split("_fn_").next())
+                    .map(|s| s.replace('-', "_"))
+            })
+            .unwrap_or_else(|| {
+                let fallback_value = fallback();
+                fallback_value.replace('-', "_")
+            })
+    }
+
     /// Helper method to fully qualify imports of external `RustBuffer`s
     fn rust_buffer_name(
         meta: &Option<ExternalFfiMetadata>,

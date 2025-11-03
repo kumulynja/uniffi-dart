@@ -57,18 +57,9 @@ impl Renderable for CallbackInterfaceCodeType {
         let namespace = type_helper
             .get_ci()
             .namespace_for_type(&callback.as_type())
-            .unwrap_or_else(|_| type_helper.get_ci().namespace());
-        let ffi_module = type_helper
-            .get_ci()
-            .iter_ffi_function_definitions()
-            .next()
-            .and_then(|f| {
-                let name = f.name();
-                name.strip_prefix("uniffi_")
-                    .and_then(|rest| rest.split("_fn_").next())
-                    .map(|s| s.replace('-', "_"))
-            })
-            .unwrap_or_else(|| namespace.replace('-', "_"));
+            .unwrap_or_else(|_| type_helper.get_ci().namespace())
+            .to_string();
+        let ffi_module = DartCodeOracle::infer_ffi_module(type_helper.get_ci(), move || namespace);
         let vtable_init = generate_callback_interface_vtable_init_function(
             callback.name(),
             &callback.methods(),
