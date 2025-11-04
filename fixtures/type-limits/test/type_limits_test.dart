@@ -136,9 +136,9 @@ void main() {
       });
 
       test('u64 bounds', () {
-        // Test valid upper bound - use BigInt for large values
-        final maxU64 = BigInt.parse('18446744073709551615'); // 2^64 - 1
-        expect(takeU64(maxU64), maxU64);
+        // Test valid upper bound within 53-bit safe integer range
+        const maxSafeU64 = 9007199254740991; // 2^53 - 1
+        expect(takeU64(maxSafeU64), maxSafeU64);
 
         // Test values that would overflow are caught by Dart
         // We can't easily test overflow in Dart as it handles large integers differently

@@ -111,4 +111,44 @@ macro_rules! impl_renderable_for_primitive {
             }
         }
     };
+    ($T:ty, $class_name:literal, $canonical_name:literal, $allocation_size:literal, $min_value:literal, $max_value:literal, $type_name:literal) => {
+        impl Renderable for $T {
+            fn render_type_helper(&self, _type_helper: &dyn TypeHelperRenderer) -> dart::Tokens {
+                let cl_name = &self.ffi_converter_name();
+                let type_signature = &self.type_label();
+                let conversion_name = &$canonical_name
+                    .replace("UInt", "Uint")
+                    .replace("Double", "Float");
+
+                let error_message =
+                    format!("\"Value out of range for {}: \" + value.toString()", $type_name);
+
+                quote! {
+                    class $cl_name {
+                        static $type_signature lift($type_signature value) => value;
+
+                        static LiftRetVal<$type_signature> read(Uint8List buf) {
+                            return LiftRetVal(buf.buffer.asByteData(buf.offsetInBytes).get$conversion_name(0), $allocation_size);
+                        }
+
+                        static $type_signature lower($type_signature value) {
+                            if (value < $min_value || value > $max_value) {
+                                throw ArgumentError($error_message);
+                            }
+                            return value;
+                        }
+
+                        static int allocationSize([$type_signature value = 0]) {
+                            return $allocation_size;
+                        }
+
+                        static int write($type_signature value, Uint8List buf) {
+                            buf.buffer.asByteData(buf.offsetInBytes).set$conversion_name(0, lower(value));
+                            return $allocation_size;
+                        }
+                    }
+                }
+            }
+        }
+    };
 }
