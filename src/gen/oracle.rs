@@ -444,6 +444,28 @@ impl DartCodeOracle {
                     outReturn.value = result ? 1 : 0;
                 )
             }
+            Type::UInt8
+            | Type::UInt16
+            | Type::UInt32
+            | Type::UInt64
+            | Type::Int8
+            | Type::Int16
+            | Type::Int32
+            | Type::Int64 => {
+                // For primitive integer return values
+                let lowered = ret_type.as_codetype().ffi_converter_name();
+                quote!(
+                    final result = obj.$method_name($(for arg in &args => $arg,));
+                    outReturn.value = $lowered.lower(result);
+                )
+            }
+            Type::Float32 | Type::Float64 => {
+                // For float return values
+                quote!(
+                    final result = obj.$method_name($(for arg in &args => $arg,));
+                    outReturn.value = result;
+                )
+            }
             Type::Optional { inner_type } => {
                 // For optional return values
                 if let Type::String = **inner_type {
@@ -518,6 +540,16 @@ impl DartCodeOracle {
     pub fn callback_out_return_type(ret_type: Option<&Type>) -> dart::Tokens {
         if let Some(ret) = ret_type {
             match ret {
+                Type::UInt8 => quote!(Pointer<Uint8>),
+                Type::UInt16 => quote!(Pointer<Uint16>),
+                Type::UInt32 => quote!(Pointer<Uint32>),
+                Type::UInt64 => quote!(Pointer<Uint64>),
+                Type::Int8 => quote!(Pointer<Int8>),
+                Type::Int16 => quote!(Pointer<Int16>),
+                Type::Int32 => quote!(Pointer<Int32>),
+                Type::Int64 => quote!(Pointer<Int64>),
+                Type::Float32 => quote!(Pointer<Float>),
+                Type::Float64 => quote!(Pointer<Double>),
                 Type::Boolean => quote!(Pointer<Int8>),
                 Type::Object { .. } => quote!(Pointer<Pointer<Void>>),
                 _ => quote!(Pointer<RustBuffer>),
@@ -587,7 +619,8 @@ impl DartCodeOracle {
             Type::Object {
                 imp: ObjectImpl::CallbackTrait,
                 ..
-            } => base_lower,
+            }
+            | Type::CallbackInterface { .. } => quote!($base_lower.address),
             _ => base_lower,
         }
     }
