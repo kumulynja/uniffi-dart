@@ -208,10 +208,7 @@ dependencies:
 
     // Get the asset ID (should match what's in generated Dart code)
     // Format: "uniffi:{cdylib_name}" (without package prefix - that's added by Dart automatically)
-    let cdylib_stem = cdylib_path
-        .file_stem()
-        .unwrap()
-        .trim_start_matches("lib"); // Remove "lib" prefix on Unix
+    let cdylib_stem = cdylib_path.file_stem().unwrap().trim_start_matches("lib"); // Remove "lib" prefix on Unix
 
     // Create Native Assets build hook using modern hooks package
     let mut build_hook = File::create(hook_dir.join("build.dart"))?;

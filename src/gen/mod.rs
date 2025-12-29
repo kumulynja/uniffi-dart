@@ -139,7 +139,8 @@ impl<'a> DartWrapper<'a> {
 
                     for arg in fun.arguments() {
                         let arg_name = arg.name();
-                        let native_type = DartCodeOracle::ffi_native_type_label(Some(&arg.type_()), ci);
+                        let native_type =
+                            DartCodeOracle::ffi_native_type_label(Some(&arg.type_()), ci);
                         let dart_type = DartCodeOracle::ffi_dart_type_label(Some(&arg.type_()), ci);
 
                         native_arg_vec.push(native_type);
@@ -171,7 +172,7 @@ impl<'a> DartWrapper<'a> {
             definitions
         }
 
-        let asset_id_suffix = &self.config.asset_id();  // e.g., "uniffi:hello_world"
+        let asset_id_suffix = &self.config.asset_id(); // e.g., "uniffi:hello_world"
 
         quote! {
             library $package_name;

@@ -59,8 +59,7 @@ macro_rules! impl_renderable_for_primitive {
 
                         static int write($type_signature value, Uint8List buf) {
                             buf.buffer.asByteData(buf.offsetInBytes).setInt32(0, value.length);
-                            int offset = buf.offsetInBytes + 4;
-                            buf.setRange(offset, offset + value.length, value);
+                            buf.setRange(4, 4 + value.length, value);
                             return 4 + value.length;
                         }
                     }

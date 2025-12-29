@@ -91,7 +91,6 @@ impl DartCodeOracle {
     //     }
     // }
 
-
     pub fn infer_ffi_module<F>(ci: &ComponentInterface, fallback: F) -> String
     where
         F: FnOnce() -> String,

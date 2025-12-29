@@ -457,7 +457,6 @@ fn trait_method_call(
 ) -> dart::Tokens {
     assert_eq!(method.arguments().len(), arg_exprs.len());
 
-    
     let ffi_name = method.ffi_func().name();
 
     let error_handler = if let Some(error_type) = method.throws_type() {
@@ -507,7 +506,7 @@ fn generate_trait_object(obj: &Object, type_helper: &dyn TypeHelperRenderer) -> 
     let cls_name = &DartCodeOracle::class_name(obj.name());
     let impl_name = format!("_{cls_name}Impl");
     let finalizer_field = format!("_{cls_name}ImplFinalizer");
-    
+
     let ffi_object_free_name = obj.ffi_object_free().name();
     let ffi_object_clone_name = obj.ffi_object_clone().name();
 
