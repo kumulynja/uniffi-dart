@@ -619,8 +619,8 @@ impl DartCodeOracle {
             Type::Object {
                 imp: ObjectImpl::CallbackTrait,
                 ..
-            }
-            | Type::CallbackInterface { .. } => quote!($base_lower.address),
+            } => base_lower,
+            Type::CallbackInterface { .. } => quote!($base_lower.address),
             _ => base_lower,
         }
     }
